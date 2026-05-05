@@ -18,13 +18,9 @@ Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. Th
 - **SSL/TLS**: Certbot
 - **Voice/Video**: Coturn (for Nextcloud Talk)
 - **Document Editing**: Collabora Online (optional)
-- **Automation**: Ansible
-<<<<<<< HEAD
-=======
 - **Automation**: Ansible 2.16.3
 - **Linting**: ansible-lint 6.17.2
 - **Python**: 3.12.3
->>>>>>> d2956e7 (commit)
 
 ## 📋 Prerequisites
 

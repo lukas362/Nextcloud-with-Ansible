@@ -1,0 +1,14 @@
+# This play will handle the creation and config of new users on the Nextcloud server
+---
+- name: Create and configure Nextcloud users
+  hosts: nextcloud
+  become: true
+  roles:
+    - nextcloud_users
+
+  tasks:
+    - name: Sends out a msg about if the user was created on Nextcloud
+      ansible.builtin.debug:
+        msg: "Nextcloud user creation was successful"
+
+# How to run this playbook: ansible-playbook -i inventory.ini users.yml

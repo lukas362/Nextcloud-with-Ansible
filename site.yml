@@ -1,0 +1,29 @@
+# This is the main Playbook, it ties all roles together
+# This Playbook will setup everything that Nextcloud needs to function
+---
+- name: Setup Nextcloud
+  hosts: nextcloud
+  become: true
+  gather_facts: true
+  roles: # will run trough the scripties in each role
+    - common_server_settings
+    - mariadb
+    - redis
+    - php
+    - apache2
+    - certbot
+    - nextcloud_setup
+    - nextcloud_backup
+    - coturn
+    - collabora
+
+  tasks:
+    - name: Sends out a msg about if the deployment of Nextcloud was successful
+      ansible.builtin.debug:
+        msg: "Nextcloud is functioning"
+
+# Check playbook syntax:
+# ansible-playbook -i inventory.ini --syntax-check site.yml
+
+# How to run the playbook:
+# ansible-playbook -i inventory.ini site.yml

@@ -1,0 +1,37 @@
+# Ansible
+*.retry
+*.pyc
+__pycache__/
+.pytest_cache/
+.tox/
+
+# Sensitive data
+*.vault
+vault_password
+secrets/
+.vault-password
+inventory/group_vars/*/vault.yml
+
+# Environment
+.env
+.env.local
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Nextcloud/Server files
+nextcloud-*.tar.bz2
+nextcloud/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp

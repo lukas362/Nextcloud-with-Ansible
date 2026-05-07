@@ -1,0 +1,94 @@
+# Here is where certbot will be downloaded and installed. Certbot will handel SSL cert for the server. HTTP -> HTTPS
+
+---
+# Installation of certbot and make sure it is the latest one
+- name: Install Certbot and Apache plugin
+  become: true
+  ansible.builtin.apt:
+    name:
+      - certbot                             # Let's encrypt
+      - python3-certbot-apache              # Plugin that helps with auto configuring SSL in Apache
+    state: present                          # makes sure the packages is installed
+#    update_cache: true                      # this will run update to check that it has the latest version
+
+# Check if there is already a SSL certctification
+- name: Check if there is already a cert
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ domains[0] }}/fullchain.pem"   # This is were the cert lives
+  register: cert_exists
+
+# Check if there is already a Collabora SSL certificate
+# - name: Check if there is already a Collabora cert
+#  ansible.builtin.stat:
+#    path: "/etc/letsencrypt/live/{{ collabora_domain }}/fullchain.pem"
+#  register: collabora_cert_exists
+
+# Obtaining apache certification with some apache plugins
+# certbot --apache = automaticky obtains and installs let's encrypt ssl cert for apache website
+# -d {{ domains[0] }} = Adds the cert to the webbsite
+# --agree-tos = Agrees to Let's Encrypt
+# --non-interactive = Makes it so I don't have to agree to questions asked by Cerybot, will automatically agree
+#  --email {{ certbot_email }} = Needed to make cert bot work
+# --redirect = Sends traffic from http:// -> https://
+
+- name: Get cert using Apache2 plugin
+  ansible.builtin.command: >
+    certbot --apache
+    -d {{ domains[0] }}
+    --agree-tos
+    --non-interactive
+    --email {{ certbot_email }}
+    --redirect
+  when:
+    - ansible_os_family == "Debian"
+    - not cert_exists.stat.exists       # If cert doesn't exist runs this command
+  register: certbot_result
+  changed_when: true
+
+# Get certificate for Collabora
+# - name: Get Collabora cert using Apache2 plugin
+#  ansible.builtin.command: >
+#    certbot --apache
+#    -d {{ collabora_domain }}
+#    --agree-tos
+#    --non-interactive
+#    --email {{ certbot_email }}
+#    --redirect
+#  when:
+#    - ansible_os_family == "Debian"
+#    - not collabora_cert_exists.stat.exists
+#  changed_when: true
+
+# Automaticly checks everyday if server needs a new cert. Hour: = what time during the day, minutes: = what minute it would happen
+# If renewal is needed, apache will be reloaded and get the new cert
+# Renewal attemps can be found in /var/log/certbot-renew.log
+- name: Install certbot deploy hook script
+  become: true
+  ansible.builtin.template:
+    src: certbot-deploy-hook.sh.j2
+    dest: /usr/local/sbin/certbot-deploy-hook
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Automatic cert renewal
+  become: true
+  ansible.builtin.cron:
+    name: "Certbot renewal"
+    hour: "{{ certbot_renew_hour }}"      # which hour of the day the cert will be checked
+    minute: "{{ certbot_renew_minute }}"  # which minute of the day the cert will be checked
+    # check for cert in background and if found adds it and renfreces the website
+    job: "certbot renew --quiet --deploy-hook /usr/local/sbin/certbot-deploy-hook >> /var/log/certbot-renew.log 2>&1"
+    user: root
+  when: certbot_auto_renew
+
+# This will check the current state of the cert (expiry date)
+- name: Verify certificate is valid
+  ansible.builtin.command: "certbot certificates"
+  register: cert_status
+  changed_when: false                     # says to anisble that this task shouldn't change system state, only read it
+
+# Prints the cert status in ansible
+- name: Display certificate status
+  ansible.builtin.debug:
+    msg: "{{ cert_status.stdout_lines }}" # msg of info about cert

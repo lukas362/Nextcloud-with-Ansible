@@ -1,0 +1,9 @@
+# This will deploy the certbot hook script that reloads the web server and coturn after successful certificate renewal
+
+# Reload web server after successful certificate renewal
+systemctl reload {{ web_server }}
+
+# If coturn exists, refresh its local certificate copy
+if [ -x /usr/local/sbin/coturn-cert-refresh ]; then
+  /usr/local/sbin/coturn-cert-refresh
+fi

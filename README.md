@@ -8,7 +8,7 @@ Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. Th
 - **Add-ons**: Built-in support for Nextcloud Talk (Coturn) and Collabora Online
 - **Infrastructure**: Works on any bare metal Ubuntu server or VM
 
-## ⚙️ Technology Stack
+## ⚙️ Tech Stack
 
 - **Nextcloud**: Open-source cloud storage and collaboration platform
 - **Web Server**: Apache2

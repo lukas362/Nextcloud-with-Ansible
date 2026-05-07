@@ -1,0 +1,139 @@
+
+# --------------- NEXTCLOUD VARIABLES ---------------                  
+
+# This is the main variable file. This is where everything is defined troughout the playbook. You can change these variables to fit your needs
+# Make sure to change all the placeholders to your actual values you have or wanna use. Also review the comments for each variable for more information
+# You also need to generate your own secrets and passwords for security purposes and if you also wanna use Collabora Online you need to generate your own static secret for coturn, you can do that with: openssl rand -hex 32
+
+# --- 1. Nextcloud + Web Server ---
+nextcloud_version: "33.0.2"                        # Version of Nextcloud
+web_server: "apache2"                              # Web server used to serve Nextcloud, you can change it to what you prefer, but make sure to also change the playbook accordingly
+domains:
+  - "ADD-YOUR-DOMAIN-HERE"                         # Domain name for Nextcloud
+
+nextcloud_install_dir: "/var/www/nextcloud"        # Where Nextcloud will be installed
+nextcloud_data_dir: "/var/www/nextcloud/data"      # Where Nextcloud stores its data (docs, photos, files, etc)
+
+# --- 2. Database (MariaDB) ---
+mariadb_port: 3306                                 # Default port for MariaDB
+mariadb_socket: "/var/run/mysqld/mysqld.sock"      # Unix socket path for local database
+
+nextcloud_db_type: "mysql"                         # Database type used by occ installer, don't change for MariaDB
+nextcloud_db_name: "nextcloud"                     # Name of the Nextcloud database
+nextcloud_db_user: "nextcloud"                     # Database user Nextcloud connects as
+nextcloud_db_host: "localhost"                     # Database host
+nextcloud_db_user_host: "localhost"                # Host the DB user is allowed to connect from
+
+# --- 3. PHP ---
+nextcloud_php_version: "8.3"                       # PHP version, can be changed to what version you want to use, but make sure it's supported by Nextcloud and that you have the correct PHP packages for that version in the playbook
+
+# This controls RAM of the server and how it should be "devided" between the PHP processes (Each PHP process uses ~100-150MB)
+php_fpm_max_children: "30"                                # How many PHP processes can be alive at the same time, aka how much ram should be used. 5 users = ~10 children
+php_fpm_start_servers: "8"                                # How many PHP processes to start when Nextcloud starts, 8 is good enough startting point
+php_fpm_min_spare_servers: "4"                            # Minimum idle processes kept ready to handle incoming requests, aka how many PHP processes that are idel and wating for be used
+php_fpm_max_spare_servers: "16"                           # Maximum idle processes allowed before extras get killed, aka how many PHP processes that can stay idel and wait, if it exceeds this number the extra idle processes will be killed/deleted to save resources
+php_fpm_max_requests: "500"                               # How many requests a process handles before restarting (prevents memory leaks), aka after the PHP process has handled 500 requests it will be restarted
+
+# --- 4. Collabora ---
+collabora_mode: "builtin"                          # "builtin" = Nextcloud richdocumentscode app, "external" = Docker collabora/code
+
+# External mode reference (leave commented while using builtin mode)
+# docker_dest_gpg: "/etc/apt/keyrings"
+# docker_dest_gpg_key: "/etc/apt/keyrings/docker.asc"
+# collabora_port: "9980"
+# collabora_wopi_url: "https://{{ domains[0] }}/collabora/"
+# collabora_memory_limit: "5g"
+# collabora_cpu_limit: "2.0"
+
+# --- 5. Certbot / SSL ---
+certbot_email: "ADD-YOUR-EMAIL-HERE"               # Email for Let's Encrypt
+certbot_auto_renew: true                           # Automatically renew certificate
+certbot_renew_hour: 1                              # Hour of day to check renewal
+certbot_renew_minute: 30                           # Minute of hour to check renewal
+
+# --- 6. Passwords ---
+mariadb_root_password: "PASSWORD-FOR-MARIADB-ROOT"        # MariaDB root password
+nextcloud_db_password: "PASSWORD-FOR-NEXTCLOUD-DB"        # Nextcloud database password
+nextcloud_admin_user: "admin"                              # Nextcloud admin username
+nextcloud_admin_password: "PASSWORD-FOR-NEXTCLOUD-ADMIN"  # Nextcloud admin password
+
+# --- 7. PHP / Upload Settings ---
+nextcloud_upload_max_size: "10G"                   # Recommended 10G or higher
+nextcloud_php_memory_limit: "2G"                   # Recommended 2G or higher
+php_timezone: "YOUR-TIMEZONE-HERE"                 # e.g. Europe/Stockholm
+
+# --- 8. SMTP / IMAP ---
+smtp_host: "YOUR-SMTP-HOST-HERE"                   # SMTP host
+smtp_port: 587                                     # SMTP port
+smtp_ssl_mode: "tls"                               # SMTP SSL mode
+smtp_username: "ADD-YOUR-EMAIL-HERE"               # SMTP username
+smtp_password: "ADD-YOUR-EMAIL-PASSWORD-HERE"      # SMTP password
+
+imap_host: "YOUR-IMAP-HOST-HERE"                   # IMAP host
+imap_port: 993                                     # IMAP port
+imap_ssl_mode: "ssl"                               # IMAP SSL mode
+
+from_address: "ADD-YOUR-FROM-ADDRESS-HERE"         # "From" it's the part before the @ in email
+from_domain: "ADD-YOUR-DOMAIN-HERE"                # "From" it's the part after the @ in email
+mail_address: "ADD-YOUR-EMAIL-HERE"                # This is where you put the whole email address
+mail_password: "ADD-YOUR-EMAIL-PASSWORD-HERE"      # This is the password for the email address
+# --- 9. Nextcloud Talk / Coturn ---
+coturn_domain: "{{ domains[0] }}"                  # Domain Talk clients use for TURN
+coturn_realm: "{{ coturn_domain }}"                # Realm for coturn authentication
+coturn_cert_domain: "{{ domains[0] }}"             # Domain used to find certificate files
+coturn_static_secret: "STATIC-SECRET-HERE"         # Generate your own secret with: openssl rand -hex 32
+coturn_tls: true                                   # Enable TURN over TLS
+coturn_listening_port: 3478                        # Main TURN port (UDP + TCP)
+coturn_tls_listening_port: 5349                    # TURN over TLS port
+coturn_dhparam_length: 2048                        # DH key size, keep at 2048 or 4096
+coturn_min_port: 49152                             # Min UDP port for Talk
+coturn_max_port: 65535                             # Max UDP port for Talk
+
+# --- 10. User Management ---
+# Usage: ansible-playbook -i inventory.ini users.yml
+display_name: "DISPLAY-NAME"                       # Display name for the new user
+actual_name: "USERNAME"                            # Actual username
+pwd: "PASSWORD-FOR-USER"                           # Password for the new user
+# email: "example@gmail.com"                       # Email for the new user
+# delete_user: "user_to_delete"                    # Username of user to delete
+
+groups_to_add_user_to:                             # Groups to add the new user to
+  - "overser"
+  # - "user"
+
+# subadmin_groups:                                 # Groups the user will be subadmin of (not fully working yet)
+#   - "user"
+
+# This is the for the Email server in "Basic settings" in Nextcloud, aka this will automatically set the email server for the admin account
+#from_domain: "DOMAIN"                             # Domain used in the "from" field of sent emails
+#from_address: "EMAIL"                             # Email address used in the "from" field of sent emails
+#mail_address: "EMAIL"                             # Email used for admin account
+#mail_password: "PASSWORD"                         # Password for the email used for admin account
+#smtp_username_basic_settings: "USERNAME"          # Username for SMTP and IMAP authentication
+#smtp_password_basic_settings: "PASSWORD"          # Password for SMTP and IMAP authentication
+
+# --- 11. S3 storage settings for Nextcloud ---
+
+nextcloud_s3_bucket: "BUCKET-NAME"                 # S3 bucket name for external storage
+nextcloud_s3_hostname: "HOSTNAME-S3"               # S3 hostname for external storage
+nextcloud_s3_key: "KEY-S3"                         # S3 access key for external storage
+nextcloud_s3_secret: "SECRET-S3"                   # S3 secret key for external storage
+
+# --- 12. S3 storage settings for Nextcloud ---
+nextcloud_backup_s3_bucket: "STORAGE-NAME-S3"      # S3 backup 
+
+# pwd for restic
+nextcloud_backup_restic_password: "PWD-FOR-RESTIC" # PWD for Restic (openssl rand -base64 32, use this to generete pwd)
+
+# Backup schedule
+# This will run the backup script every day at 2:15am
+nextcloud_backup_cron_hour: "2"
+nextcloud_backup_cron_minute: "15"
+
+# Retention policy for restic backups
+# "daily" = how many daily backups to keep
+# "weekly" = how many weekly backups to keep
+# "monthly" = how many monthly backups to keep.
+nextcloud_backup_keep_daily: 14
+nextcloud_backup_keep_weekly: 8
+nextcloud_backup_keep_monthly: 12

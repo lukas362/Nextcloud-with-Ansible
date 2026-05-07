@@ -1,0 +1,6 @@
+---
+# This handler will restart apache service, it will only be triggerd if there is a new installation of apache2
+- name: Restart Apache2
+  ansible.builtin.service:
+    name: apache2
+    state: restarted

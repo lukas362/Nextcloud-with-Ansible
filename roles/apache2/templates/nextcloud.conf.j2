@@ -1,0 +1,75 @@
+# Here are the configs for the web server anything that needs to be change or adjusted with web server settings that would normally require going into the files to change should be here and easy to change to your liking
+<VirtualHost *:80>
+    ServerName {{ domains[0] }}
+    DocumentRoot {{ nextcloud_install_dir }}
+
+    # Redirect all HTTP traffic to HTTPS
+    RewriteEngine On
+    RewriteRule ^/\.well-known/acme-challenge/ - [L]
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # Gives Error logs
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+
+{% if apache2_ssl_cert_stat.stat is defined and apache2_ssl_cert_stat.stat.exists %}
+# This is the SSL configuration for Nextcloud. It listens on port 443 and uses the SSL certificates obtained from Let's Encrypt. The configuration also includes the same proxy settings for Collabora as the HTTP virtual host.
+<VirtualHost *:443>
+    DocumentRoot {{ nextcloud_install_dir }}
+    ServerName {{ domains[0] }}
+
+    # Enable SSL and specify the certificate files
+    SSLEngine on
+    SSLCertificateFile /etc/letsencrypt/live/{{ domains[0] }}/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/{{ domains[0] }}/privkey.pem
+
+    # Redirect all HTTP traffic to HTTPS
+    <Directory {{ nextcloud_install_dir }}>
+        Options +FollowSymlinks
+        AllowOverride All
+        Require all granted
+        <IfModule mod_dav.c>
+            Dav off
+        </IfModule>
+        SetEnv HOME {{ nextcloud_install_dir }}
+        SetEnv HTTP_HOME {{ nextcloud_install_dir }}
+    </Directory>
+
+    # Security headers
+    <IfModule mod_headers.c>
+        Header always set Strict-Transport-Security "max-age=15552000; includeSubDomains"
+    </IfModule>
+
+    # Send PHP requests to PHP-FPM instead of serving source code
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php/php{{ nextcloud_php_version }}-fpm.sock|fcgi://localhost/"
+    </FilesMatch>
+
+    <IfModule mod_dir.c>
+        DirectoryIndex index.php index.html
+    </IfModule>
+
+    <IfModule mod_setenvif.c>
+        SetEnvIfNoCase ^Authorization$ "(.+)" HTTP_AUTHORIZATION=$1
+    </IfModule>
+
+    {# External mode reference (leave commented while using builtin mode)
+    {% if collabora_mode == 'external' %}
+    <IfModule mod_proxy.c>
+        ProxyPreserveHost On
+        ProxyPass /collabora http://127.0.0.1:9980
+        ProxyPassReverse /collabora http://127.0.0.1:9980
+        ProxyPass /loleaflet http://127.0.0.1:9980/loleaflet
+        ProxyPassReverse /loleaflet http://127.0.0.1:9980/loleaflet
+    </IfModule>
+    {% endif %}
+    #}
+
+    # Gives Error logs
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+</VirtualHost>
+{% endif %}

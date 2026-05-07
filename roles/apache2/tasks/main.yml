@@ -1,0 +1,105 @@
+# Installs Apache Web Server, Apache is the web server that will be used to serve the web application.
+---
+# Installs apache2
+- name: Install Apache2
+  ansible.builtin.apt:
+    name: apache2
+    state: present                    # makes sure that apache2 is installed
+    force_apt_get: true               # forces the use of apt-get, this is needed to make sure that the latest version of apache2 is installed
+  when: ansible_os_family == "Debian" # check if it is an Debian family os
+  notify: Restart Apache2             # will send a notification to handler to restart apache, will only run if a new package is installed
+
+# This will disable default vhosts. It keept being a pain for me to have the default apache page
+- name: Disable default Apache sites
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apache2/sites-enabled/000-default.conf
+    - /etc/apache2/sites-enabled/default-ssl.conf
+  when: ansible_os_family == "Debian"
+
+# This will remove any old Nextcloud configs that has survive old configs
+# It keept being a problem for me when I made a change to the apache template config and the old config was still enabled
+- name: Find old Nextcloud site configs
+  ansible.builtin.find:
+    paths: /etc/apache2/sites-enabled
+    patterns: "nextcloud*.conf"
+    file_type: any
+  register: nextcloud_enabled_sites
+  when: ansible_os_family == "Debian"
+
+- name: Remove old Nextcloud site configs
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ nextcloud_enabled_sites.files }}"
+  when: ansible_os_family == "Debian"
+
+# Enable required modules before loading the Nextcloud vhost.
+# This avoids configtest failures for directives like ProxyPreserveHost.
+- name: Required Apache2 modules
+  community.general.apache2_module:
+    name: "{{ item }}"                # Loop that will cycle trought ssl,rewrite and headers. "item" will "change" name to ssl, rewrite...
+    state: present
+  loop:
+    - proxy
+    - proxy_http
+    - proxy_fcgi
+    - proxy_wstunnel
+    - ssl
+    - rewrite
+    - headers
+  when: ansible_os_family == "Debian"
+  notify: Restart Apache2
+
+- name: Check if SSL certificate exists
+  ansible.builtin.stat:
+    path: /etc/letsencrypt/live/{{ domains[0] }}/fullchain.pem
+  register: apache2_ssl_cert_stat
+  when: ansible_os_family == "Debian"
+
+# This will deploy the apache config for Nextcloud
+- name: Deploy Apache configuration for Nextcloud
+  ansible.builtin.template:
+    src: nextcloud.conf.j2 # This is were the apache configs for the virtual host is found (found under "apache2/templates")
+    dest: /etc/apache2/sites-available/nextcloud.conf # This is were the apache config for nextcloud is stored
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_os_family == "Debian"
+  notify: Restart Apache2
+
+# This will enable the Nextcloud site config in apache
+- name: Enable Nextcloud site
+  ansible.builtin.file:
+    src: /etc/apache2/sites-available/nextcloud.conf  # This is were the apache config for nextcloud is stored
+    dest: /etc/apache2/sites-enabled/nextcloud.conf   # This is were the enabled apache configs are stored
+    state: link
+  when: ansible_os_family == "Debian"
+  notify: Restart Apache2
+
+# This will check if the apache config is valid
+- name: Validate Apache configuration
+  ansible.builtin.command:
+    cmd: apache2ctl -t
+  changed_when: false
+  when: ansible_os_family == "Debian"
+
+# Starts apache and makes sure that it running
+- name: Apach2 is started
+  ansible.builtin.systemd:
+    name: apache2
+    state: started                    # makes sure that apache is started
+    enabled: true                     # ensures that apache is automatically started whenever the server starts
+  register: apache_managed_to_launch  # Defined in "Reports if apache manage to launch"
+  when: ansible_os_family == "Debian"
+  notify: Restart Apache2
+
+# Reports if apache manage to launch
+- name: Report if Apache2 managed to launch
+  ansible.builtin.debug:
+    msg: "Apache2 is running and managed to launch successfully"
+  when:
+    - ansible_os_family == "Debian"
+    - apache_managed_to_launch is success

@@ -6,6 +6,7 @@ Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. Th
 - **Automated Setup**: Complete automation of Nextcloud installation using Ansible
 - **Full Stack Deployment**: Includes all required services (MariaDB, Redis, PHP, Apache2, SSL/TLS)
 - **Add-ons**: Built-in support for Nextcloud Talk (Coturn) and Collabora Online
+- **Backup**: S3-storage for storing files and used for backups of the files with Restic.
 - **Infrastructure**: Works on any bare metal Ubuntu server or VM
 
 ## ⚙️ Tech Stack

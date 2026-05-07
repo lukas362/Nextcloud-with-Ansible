@@ -1,7 +1,7 @@
 # Nextcloud set up with Ansible
 Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. This repository contains Ansible playbooks and configurations to automate the complete setup and deployment of Nextcloud on a bare metal Ubuntu server with some added features. It provides an efficient, and repeatable way to getting Nextcloud up and running with all necessary components.
 
-## 🚀 Features
+## Features
 
 - **Automated Setup**: Complete automation of Nextcloud installation using Ansible
 - **Full Stack Deployment**: Includes all required services (MariaDB, Redis, PHP, Apache2, SSL/TLS)
@@ -9,7 +9,7 @@ Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. Th
 - **Backup**: S3-storage for storing files and used for backups of the files with Restic.
 - **Infrastructure**: Works on any bare metal Ubuntu server or VM
 
-## ⚙️ Tech Stack
+## Tech Stack
 
 - **Nextcloud**: Open-source cloud storage and collaboration platform
 - **Web Server**: Apache2
@@ -24,7 +24,7 @@ Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. Th
 - **Linting**: ansible-lint 6.17.2
 - **Python**: 3.12.3
 
-## 📋 Prerequisites
+## Prerequisites
 
 Before you begin, ensure you have the following:
 
@@ -84,7 +84,7 @@ ansible-playbook -i inventory.ini --syntax-check site.yml
 ansible-playbook -i inventory.ini site.yml
 ansible-playbook -i inventory.ini users.yml
 ```
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 .
@@ -110,4 +110,4 @@ ansible-playbook -i inventory.ini users.yml
 ---
 
 **Created by**: [@lukas362](https://github.com/lukas362)  
-**Last Updated**: April 23, 2026
+**Last Updated**: May 7, 2026

@@ -1,5 +1,5 @@
 # Nextcloud set up with Ansible
-Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. This repository contains Ansible playbooks and configurations to automate the complete setup and deployment of Nextcloud on a bare metal Ubuntu server. It provides an efficient, repeatable, and streamlined approach to getting Nextcloud up and running with all necessary components.
+Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. This repository contains Ansible playbooks and configurations to automate the complete setup and deployment of Nextcloud on a bare metal Ubuntu server with some added features. It provides an efficient, and repeatable way to getting Nextcloud up and running with all necessary components.
 
 ## 🚀 Features
 

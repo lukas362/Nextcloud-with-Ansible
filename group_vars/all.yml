@@ -105,12 +105,12 @@ groups_to_add_user_to:                             # Groups to add the new user 
 #   - "user"
 
 # This is the for the Email server in "Basic settings" in Nextcloud, aka this will automatically set the email server for the admin account
-#from_domain: "DOMAIN"                             # Domain used in the "from" field of sent emails
-#from_address: "EMAIL"                             # Email address used in the "from" field of sent emails
-#mail_address: "EMAIL"                             # Email used for admin account
-#mail_password: "PASSWORD"                         # Password for the email used for admin account
-#smtp_username_basic_settings: "USERNAME"          # Username for SMTP and IMAP authentication
-#smtp_password_basic_settings: "PASSWORD"          # Password for SMTP and IMAP authentication
+from_domain_smtp: "DOMAIN"                        # Domain used in the "from" field of sent emails
+from_address: "EMAIL"                             # Email address used in the "from" field of sent emails
+mail_address: "EMAIL"                             # Full email address used for SMTP authentication
+mail_password: "PASSWORD"                         # Password for the email used for admin account
+smtp_username_basic_settings: "USERNAME"          # Username for SMTP and IMAP authentication
+smtp_password_basic_settings: "PASSWORD"          # Password for SMTP and IMAP authentication
 
 # --- 11. S3 storage settings for Nextcloud ---
 

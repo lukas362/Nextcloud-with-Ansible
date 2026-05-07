@@ -1,0 +1,117 @@
+# This is were collabora is installed and configured. This is where I will install collabora online and make it work with nextcloud
+---
+# Builtin Collabora only
+
+# External mode reference (leave commented while using builtin mode)
+# - name: Install Docker dependencies
+#   ansible.builtin.apt:
+#     name:
+#       - ca-certificates
+#       - curl
+#       - gnupg
+#       - lsb-release
+#     state: present
+#     update_cache: true
+#   when: collabora_mode == 'external'
+#
+# - name: Create Docker keyring directory
+#   ansible.builtin.file:
+#     path: "{{ docker_dest_gpg }}"
+#     state: directory
+#     mode: "0755"
+#   when: collabora_mode == 'external'
+#
+# - name: Download Docker GPG key
+#   ansible.builtin.get_url:
+#     url: https://download.docker.com/linux/ubuntu/gpg
+#     dest: "{{ docker_dest_gpg_key }}"
+#     mode: "0644"
+#   when: collabora_mode == 'external'
+#
+# - name: Add docker apt repo
+#   ansible.builtin.apt_repository:
+#     repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+#     state: present
+#   when: collabora_mode == 'external'
+#
+# - name: Install Docker
+#   ansible.builtin.apt:
+#     name:
+#       - docker-ce
+#       - docker-ce-cli
+#       - containerd.io
+#       - docker-compose-plugin
+#     state: present
+#   when: collabora_mode == 'external'
+#
+# - name: Start Docker and make sure it running
+#   ansible.builtin.systemd:
+#     name: docker
+#     state: started
+#     enabled: true
+#   when: collabora_mode == 'external'
+#
+# - name: Pull Collabora CODE Docker image
+#   community.docker.docker_image:
+#     name: collabora/code
+#     tag: latest
+#     source: pull
+#     force_source: true
+#   when: collabora_mode == 'external'
+#
+# - name: Run Collabora container
+#   community.docker.docker_container:
+#     name: collabora
+#     image: collabora/code:latest
+#     restart_policy: always
+#     ports:
+#       - "127.0.0.1:{{ collabora_port }}:9980"
+#     memory: "{{ collabora_memory_limit }}"
+#     cpus: "{{ collabora_cpu_limit }}"
+#     capabilities:
+#       - MKNOD
+#     env:
+#       aliasgroup1: "https://{{ domains[0] }}:443"
+#       extra_params: "--o:ssl.enable=false --o:ssl.termination=true"
+#   notify: Restart collabora
+#   when: collabora_mode == 'external'
+#
+# - name: Read current richdocuments wopi_url
+#   ansible.builtin.command:
+#     cmd: php occ config:app:get richdocuments wopi_url
+#   args:
+#     chdir: "{{ nextcloud_install_dir }}"
+#   become: true
+#   become_user: www-data
+#   register: collabora_wopi_current
+#   changed_when: false
+#   when: collabora_mode == 'external'
+#
+# - name: Set richdocuments wopi_url in Nextcloud
+#   ansible.builtin.command:
+#     cmd: "php occ config:app:set richdocuments wopi_url --value={{ collabora_wopi_url }}"
+#   args:
+#     chdir: "{{ nextcloud_install_dir }}"
+#   become: true
+#   become_user: www-data
+#   register: occ_result
+#   changed_when: collabora_wopi_current.stdout | trim != collabora_wopi_url
+#   when: collabora_mode == 'external' and collabora_wopi_current.stdout | trim != collabora_wopi_url
+
+# Removes the wopi_url config so Nextcloud doesn't point at a external server (comment out when wanna use external mode)
+- name: Remove external richdocuments wopi_url in builtin mode
+  ansible.builtin.command:
+    cmd: php occ config:app:delete richdocuments wopi_url
+  args:
+    chdir: "{{ nextcloud_install_dir }}"
+  become: true
+  become_user: www-data
+  changed_when: false
+  when: collabora_mode == 'builtin'
+
+# Removes old enabled site configs for Nextcloud to avoid conflict with new configs (comment out when wanna use external mode)
+# - name: Remove external Collabora container when in builtin mode
+#  community.docker.docker_container:
+#    name: collabora
+#    state: absent
+#  when: collabora_mode == 'builtin'

@@ -1,0 +1,6 @@
+---
+# Collabora runs as a Docker container, so restart Docker service instead
+- name: Restart collabora
+  ansible.builtin.service:
+    name: docker
+    state: restarted

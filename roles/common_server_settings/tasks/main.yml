@@ -1,0 +1,78 @@
+# Updates the server and installs necessary and basic tools that are needed for the server to run
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+# Install required Ansible collections
+- name: Install Ansible collections
+# This will install the community.docker collection, which is needed to run the docker related tasks in the collabora role
+  ansible.builtin.command: >
+    ansible-galaxy collection install community.docker
+  args:
+    creates: ~/.ansible/collections/ansible_collections/community/docker
+
+# Update package list
+- name: Update apt cache
+  ansible.builtin.apt:
+#    update_cache: true
+    cache_valid_time: 86400     # will only check for new packages after a whole day
+
+# Install basic tools
+- name: Install basic tools
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - unzip
+    state: present
+
+# Installation and config of ufw firewall
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Allow SSH (port 22)
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: Allow HTTP (port 80)
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: Allow HTTPS (port 443)
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+
+- name: Allow Collabora (port 9980)
+  community.general.ufw:
+    rule: allow
+    port: "9980"
+    proto: tcp
+
+- name: Allow TURN listener port
+  community.general.ufw:
+    rule: allow
+    port: "{{ coturn_listening_port | string }}"
+    proto: any
+
+- name: Allow TURN TLS listener port
+  community.general.ufw:
+    rule: allow
+    port: "{{ coturn_tls_listening_port | string }}"
+    proto: tcp
+  when: coturn_tls | default(false)
+
+- name: Allow TURN relay port range
+  community.general.ufw:
+    rule: allow
+    port: "{{ coturn_min_port }}:{{ coturn_max_port }}"
+    proto: udp

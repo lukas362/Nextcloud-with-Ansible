@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+umask 077
+
+BACKUP_WORKDIR="/var/backups/nextcloud"
+TIMESTAMP="$(date +%F_%H-%M-%S)"
+SNAPSHOT_DIR="${BACKUP_WORKDIR}/${TIMESTAMP}"
+OBJECTSTORE_SNAPSHOT_DIR="${SNAPSHOT_DIR}/primary-objectstore"
+MAINTENANCE_ON=0
+
+set -a
+source /etc/nextcloud-backup/backup.env
+set +a
+
+cleanup() {
+  if [[ "${MAINTENANCE_ON}" -eq 1 ]]; then
+    runuser -u www-data -- php {{ nextcloud_install_dir }}/occ maintenance:mode --off >/dev/null 2>&1 || true
+  fi
+  rm -rf "${SNAPSHOT_DIR}"
+}
+trap cleanup EXIT
+
+mkdir -p "${SNAPSHOT_DIR}"
+
+# Keep DB and file metadata in sync by freezing writes during dump/snapshot.
+runuser -u www-data -- php {{ nextcloud_install_dir }}/occ maintenance:mode --on
+MAINTENANCE_ON=1
+
+mysqldump \
+  --single-transaction \
+  --quick \
+  --lock-tables=false \
+  -h {{ nextcloud_db_host }} \
+  -u {{ nextcloud_db_user }} \
+  -p{{ nextcloud_db_password }} \
+  {{ nextcloud_db_name }} > "${SNAPSHOT_DIR}/nextcloud-db.sql"
+
+CONFIG_ITEMS=("config")
+if [[ -d "{{ nextcloud_install_dir }}/custom_apps" ]]; then
+  CONFIG_ITEMS+=("custom_apps")
+fi
+if [[ -d "{{ nextcloud_install_dir }}/themes" ]]; then
+  CONFIG_ITEMS+=("themes")
+fi
+
+tar -czf "${SNAPSHOT_DIR}/nextcloud-config.tar.gz" \
+  -C "{{ nextcloud_install_dir }}" \
+  "${CONFIG_ITEMS[@]}"
+
+tar -czf "${SNAPSHOT_DIR}/nextcloud-data-dir.tar.gz" \
+  -C / \
+  "{{ nextcloud_data_dir | regex_replace('^/', '') }}"
+
+if [[ "{{ nextcloud_backup_include_primary_objectstore | ternary('true', 'false') }}" == "true" ]]; then
+  mkdir -p "${OBJECTSTORE_SNAPSHOT_DIR}"
+  rclone sync \
+":s3,provider=Other,access_key_id={{ nextcloud_s3_key }},secret_access_key={{ nextcloud_s3_secret }},endpoint={{ nextcloud_s3_hostname }},force_path_style=true:{{ nextcloud_s3_bucket }}" \
+    "${OBJECTSTORE_SNAPSHOT_DIR}" \
+    --fast-list \
+    --transfers 16 \
+    --checkers 16 \
+    --log-level ERROR
+fi
+
+runuser -u www-data -- php {{ nextcloud_install_dir }}/occ maintenance:mode --off
+MAINTENANCE_ON=0
+
+if ! restic snapshots >/dev/null 2>&1; then
+  restic init
+fi
+
+restic backup "${SNAPSHOT_DIR}" --tag nextcloud --tag automated
+
+restic forget --prune \
+  --keep-daily {{ nextcloud_backup_keep_daily }} \
+  --keep-weekly {{ nextcloud_backup_keep_weekly }} \
+  --keep-monthly {{ nextcloud_backup_keep_monthly }}
+
+restic snapshots --latest 1

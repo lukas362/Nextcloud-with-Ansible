@@ -1,0 +1,78 @@
+# Installation of PHP and required extensions for Nextcloud
+---
+# This will basically only download the PHP and other PHP extensions to make everything run smootly
+# nextcloud_php_version can be found in the all.yml
+- name: Install PHP and required extensions to make Nextcloud run smoothly
+  ansible.builtin.apt:
+    name:
+      - "php{{ nextcloud_php_version }}"
+      - "php{{ nextcloud_php_version }}-fpm"
+      - "php{{ nextcloud_php_version }}-gd"
+      - "php{{ nextcloud_php_version }}-mysql"
+      - "php{{ nextcloud_php_version }}-curl"
+      - "php{{ nextcloud_php_version }}-mbstring"
+      - "php{{ nextcloud_php_version }}-intl"
+      - "php{{ nextcloud_php_version }}-gmp"
+      - "php{{ nextcloud_php_version }}-bcmath"
+      - "php{{ nextcloud_php_version }}-xml"
+      - "php{{ nextcloud_php_version }}-zip"
+      - "php{{ nextcloud_php_version }}-redis"
+      - "php{{ nextcloud_php_version }}-apcu"
+      - "php{{ nextcloud_php_version }}-imagick"
+      - "libmagickcore-6.q16-6-extra"
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+
+
+- name: Configure PHP-FPM pool for Nextcloud
+  ansible.builtin.template:
+    src: www.conf.j2
+    dest: "/etc/php/{{ nextcloud_php_version }}/fpm/pool.d/www.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Php
+
+# Needed for the next play "Configure PHP for Nextcloud" to work, otherwise I get an error about there not being a directory
+- name: Ensure PHP-FPM conf.d directory exists
+  ansible.builtin.file:
+    path: "/etc/php/{{ nextcloud_php_version }}/fpm/conf.d"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+# Needed to apply the new changes to php settings
+- name: Configure PHP for Nextcloud (FPM)
+  ansible.builtin.template:
+    src: php.ini.j2
+    dest: "/etc/php/{{ nextcloud_php_version }}/fpm/conf.d/90-php.ini"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Php
+
+# Apply the same settings to CLI so occ commands use the same memory limit etc.
+- name: Configure PHP for Nextcloud (CLI)
+  ansible.builtin.template:
+    src: php.ini.j2
+    dest: "/etc/php/{{ nextcloud_php_version }}/cli/conf.d/90-php.ini"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Ensure PHP-FPM is running with the current config even if the ini was unchanged
+- name: Ensure PHP-FPM is started and enabled
+  ansible.builtin.systemd:
+    name: "php{{ nextcloud_php_version }}-fpm"
+    state: started
+    enabled: true
+
+# Maintenance window for Nextcloud, reset at 1am every day
+- name: Set Nextcloud maintenance window start
+  ansible.builtin.command:
+    cmd: php /var/www/nextcloud/occ config:system:set maintenance_window_start --type=integer --value=1
+  become_user: www-data
+  register: result
+  changed_when: "'already' not in result.stdout"

@@ -1,0 +1,6 @@
+# Handler for php
+---
+- name: Restart Php
+  ansible.builtin.systemd:
+    name: "php{{ nextcloud_php_version }}-fpm"
+    state: restarted

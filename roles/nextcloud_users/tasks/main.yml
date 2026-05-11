@@ -1,0 +1,141 @@
+# This role will handle the creation and configuration of new users on the Nextcloud server
+# it will create a user with the specified username and password
+# If you want to add more users then go to the group_vars/all.yml file and change the variables there and then run this playbook
+---
+
+# This will check if there already is a user with the same name, if there is it will skip the task
+- name: Check if user already exists
+  ansible.builtin.command:
+    cmd: "php occ user:info {{ display_name }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: user_check
+  failed_when: false
+  changed_when: false
+
+# Check that group exists
+- name: Ensure groups exist
+  ansible.builtin.command:
+    cmd: "php occ group:add {{ item }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  loop: "{{ groups_to_add_user_to }}"
+  register: group_create_result
+  changed_when: "'created' in group_create_result.stdout"
+  failed_when:
+    - group_create_result.rc != 0
+    - "'already exists' not in group_create_result.stdout"
+
+- name: Ensure user is present with display name
+  ansible.builtin.command:
+    cmd: "php occ user:add --display-name='{{ display_name }}' --password-from-env {{ actual_name }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  environment:
+    OC_PASS: "{{ pwd }}"          # This is were the password gets created
+  when: user_check.rc != 0        # creates a user only if there isn't already a user with the same name, if there is it will skip this task
+  changed_when: false
+
+# This will delete a user based on the username (needs to run before "Add user to group")
+# - name: Remove user
+#  ansible.builtin.command:
+#    cmd: "php occ user:delete {{ delete_user }}"
+#    chdir: "{{ nextcloud_install_dir }}"
+#  become_user: www-data
+#  failed_when: false
+#  changed_when: "'Deleted user' in remove_user_result.stdout"
+
+- name: Add user to group
+  ansible.builtin.command:
+    cmd: "php occ group:adduser {{ item }} {{ actual_name }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  loop: "{{ groups_to_add_user_to }}"
+  failed_when: false
+  changed_when: false
+
+# Saves the user's email address to their Nextcloud profile
+# Only runs if you have set "user_email" in group_vars/all.yml
+- name: Set profile email for new user
+  ansible.builtin.command:
+    cmd: "php occ user:setting {{ actual_name }} settings email {{ user_email }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  when: user_email is defined   # skip this task if user_email is not set
+  changed_when: false
+
+# Checks whether this user already has a Mail app account configured
+# The result is saved so the next task can decide to create one or skip
+# - name: Check if Mail app account already exists for new user
+#  ansible.builtin.command:
+#    cmd: "php occ mail:account:export {{ actual_name }}"
+#    chdir: "{{ nextcloud_install_dir }}"
+#  become_user: www-data
+#  register: user_mail_check     # saves the output so we can check it below
+#  failed_when: false            # don't fail if the user has no account yet (that's expected)
+#  changed_when: false           # this only reads data, it doesn't change anything
+#  when: user_email is defined   # skip this task if user_email is not set
+
+# Connects the Mail app for this user automatically
+# Only runs if:
+#   - user_email is set in group_vars/all.yml
+#   - user_mail_password is set in group_vars/all.yml
+#   - the account doesn't already exist (avoids creating duplicates)
+
+# - name: Configure Mail app account for new user
+#  ansible.builtin.command:
+#    cmd: >
+#      php occ mail:account:create
+#      "{{ actual_name }}"
+#      "{{ display_name }}"
+#      "{{ user_email }}"
+#      "{{ imap_host }}"
+#      "{{ imap_port }}"
+#      "{{ imap_ssl_mode }}"
+#      "{{ user_email }}"
+#      "{{ user_mail_password }}"
+#      "{{ smtp_host }}"
+#      "{{ smtp_port }}"
+#      "{{ smtp_ssl_mode }}"
+#      "{{ user_email }}"
+#      "{{ user_mail_password }}"
+#    chdir: "{{ nextcloud_install_dir }}"
+#   become_user: www-data
+#  when:
+#    - user_email is defined                                         # only run if user_email is set
+#    - user_mail_password is defined                                 # only run if user_mail_password is set
+#    - user_email not in (user_mail_check.stdout | default(''))      # skip if account already exists
+#  changed_when: true
+
+# - name: Reset the user pwd
+#  ansible.builtin.command:
+#    cmd: "php occ user:resetpassword {{ actual_name }} --password-from-env"
+#    chdir: "{{ nextcloud_install_dir }}"
+#  become_user: www-data
+#  register: reset_password_result
+#  changed_when: "'Password reset successfully' in reset_password_result.stdout"
+
+# This creates a sub admin user based on the "subadmin_group" variable
+# Sub admin users will have the ability to:
+# - Manage users and groups within their assigned group
+# - Manage pwd resets for users within their assigned group
+# - Changed display names for users within their assigned group
+# - Adjust quotas for users within their assigned group
+# - Manage group memberships for users within their assigned group
+
+# What they can't do:
+# - No access to system settings like "adminstartion settings"
+# - They can't install, update or remove Nextcloud apps
+# - No log access
+
+# - name: Assign user as sub-admin for groups
+#  ansible.builtin.command:
+#    cmd: "php occ group:adduser {{ item }} {{ actual_name }}"
+#    chdir: "{{ nextcloud_install_dir }}"
+#  become_user: www-data
+#  loop: "{{ subadmin_groups }}"
+#  register: subadmin_result
+#  changed_when: "'User' in subadmin_result.stdout and 'subadmin' in subadmin_result.stdout"
+#  failed_when:
+#    - subadmin_result.rc != 0
+#    - "'already a Sub Admin' not in subadmin_result.stdout"  # Skip gracefully if already set

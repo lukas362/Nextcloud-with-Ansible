@@ -1,0 +1,9 @@
+# This will deploy the coturn refresh hook script that copies the new cert files made by certbot, happens only when certbot gets a new cert
+#!/bin/sh
+set -eu
+
+# Copy the latest Let's Encrypt certificate files into coturn's own path.
+# coturn reads these local files and then gets restarted.
+install -m 0640 -o root -g turnserver "{{ coturn_tls_cert_src }}" "{{ coturn_tls_cert }}"
+install -m 0640 -o root -g turnserver "{{ coturn_tls_key_src }}" "{{ coturn_tls_key }}"
+systemctl restart coturn

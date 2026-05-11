@@ -1,0 +1,34 @@
+# This play config the coturn TURN server from enabling TLS, opening ports and setting IP addresses
+---
+# Enable TURN over TLS, needed for security privacy, reliable network, etc
+coturn_tls: true
+
+# TURN port (UDP + TCP)
+coturn_listening_port: 3478
+
+# TURN TLS port
+coturn_tls_listening_port: 5349
+
+# Diffie-Hellman key size for TLS, aka enables for two parties or more to establish a shared secret key over an insecure channel
+coturn_dhparam_length: 2048
+
+# Server certificate paths used by coturn
+coturn_tls_cert: /etc/coturn/certs/cert.pem
+coturn_tls_key: /etc/coturn/certs/privkey.pem
+
+# Certificate paths from Let's Encrypt
+coturn_tls_cert_src: /etc/letsencrypt/live/{{ coturn_cert_domain | default(coturn_realm) }}/fullchain.pem
+coturn_tls_key_src: /etc/letsencrypt/live/{{ coturn_cert_domain | default(coturn_realm) }}/privkey.pem
+
+# UDP relay media port range
+coturn_min_port: 49152
+coturn_max_port: 65535
+
+# Connection and bandwidth limits (0 for now, but if it causes lag or other issues it should be incrased to 50 or 100 for both)
+coturn_total_quota: 0
+coturn_bps_capacity: 0
+
+# coturn_allowed_peer_ips = allowed IP addresses that can connect to coturn. If empty, all IPs are allowed.
+# coturn_denied_peer_ips = denied IP addresses that cannot connect to coturn. If empty, no IPs are denied.
+coturn_allowed_peer_ips: []
+coturn_denied_peer_ips: []

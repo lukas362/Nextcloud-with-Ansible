@@ -1,0 +1,108 @@
+# This template is a config for Coturn TURN server 
+
+# --- Network configs ---
+
+# This is the main port of the TURN server it listens for both UDP and TCP traffic
+# Clients that cannot use this port (3478) will be able to connect to the TLS port (5349) if TLS is enabled (see below)
+listening-port={{ coturn_listening_port }}
+
+# This is the TLS port of the TURN server it listens for both UDP and TCP traffic
+# Clients that couldn't use the main port (3478) will be able to connect to this port (5349) if TLS is enabled
+{% if coturn_tls %}
+tls-listening-port={{ coturn_tls_listening_port }}
+{% endif %}
+
+# The local IP address that Coturn should bind to
+{% if coturn_listening_ips is defined %}
+{% for ip in coturn_listening_ips %}
+listening-ip={{ ip }}
+{% endfor %}
+{% endif %}
+
+# This ensures that the external IP is only added to the turnserver.conf file if a public IP address is defined and not empty
+# It prevents misconfiguration when coturn is behind a NAT
+{% if coturn_external_ip is defined and coturn_external_ip %}
+external-ip={{ coturn_external_ip }}
+{% endif %}
+
+# This is the range of ports that the TURN server will use for relaying talk / media traffic (UDP and TCP)
+min-port={{ coturn_min_port }}
+max-port={{ coturn_max_port }} 
+
+# --- Security configs, protocols, authentication, realm, quotas, bandwidth, nonces ---
+
+# fingerprint = helps with dusubgusihing packets on the TURN server from other UDP traffic (needed for WebRTC)
+fingerprint
+
+# use-auth-secret = enables TURN authentication using a shared secret, they will expire after a certain time (defined by the client) and the TURN server will generate a new one for each request
+use-auth-secret
+
+# static-auth-secret = the shared secret used for authentication, it should be a long random string and should be kept secret
+static-auth-secret={{ coturn_static_secret }}
+
+# realm = the realm is used to identify the authentication domain, it is used in the authentication process and should be a unique string that identifies the TURN server
+realm={{ coturn_realm }}
+
+# total-quota = the total number of simultaneous sessions that the TURN server can handle
+total-quota={{ coturn_total_quota }}
+
+# bps-capacity = the maximum bandwidth (in bits per second) that the TURN server can handle
+bps-capacity={{ coturn_bps_capacity }}
+
+# stale-nonce = limits the lifetime of a nonce (number used once) to prevent replay attacks 
+stale-nonce
+
+# --- TLS configs ---
+
+# Path to cert and key files for TLS configuration
+{% if coturn_tls %}
+cert={{ coturn_tls_cert }}
+pkey={{ coturn_tls_key }}
+
+# Diffie-Hellman parameters file for TLS configuration, it is used to establish a secure connection between the client and the TURN server
+dh-file=/etc/coturn-dh-{{ coturn_dhparam_length }}.pem
+
+# This is a security measure to disable older versions of TLS that are considered less secure
+# Disable TLS 1.0
+no-tlsv1
+# Disable TLS 1.1
+no-tlsv1_1
+{% endif %}
+
+# --- Other security and protocol configs ---
+
+# Disable rfc5780, which is a protocol that allows clients to discover their public IP address and port when behind a NAT, aka keep at no
+no-rfc5780
+# Disables backward compatibility with STUN
+no-stun-backward-compatibility
+# This helps identify the source IP/port to detect NAT and firewall behavior
+response-origin-only-with-rfc5780
+
+# --- Logging and other configs ---
+
+# This disables the CLI for the TURN server, to help prevent unauthorized access to the server and to reduce the attack surface of the TURN server
+no-cli
+
+# This disables the use of multicast for peer discovery, which can help prevent certain types of attacks and reduce unnecessary network traffic
+no-multicast-peers
+
+# This disables logging to stdout, which can help prevent sensitive information from being exposed in logs and reduce the risk of log injection attacks
+no-stdout-log
+
+# Sends all logs to syslog
+syslog
+
+# Do not append PID or date to log file names
+simple-log
+
+# This block here will allow or deny access to users based on their IP address
+
+# This blocks specifies IP addresses that are not allowed to connect to the TURN server
+{% for ip in coturn_denied_peer_ips %}
+denied-peer-ip={{ ip }}
+{% endfor %}
+
+# This specifies IP addresses that are allowed to connect to the TURN server
+{% for ip in coturn_allowed_peer_ips %}
+allowed-peer-ip={{ ip }}
+{% endfor %}

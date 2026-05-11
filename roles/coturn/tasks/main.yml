@@ -1,0 +1,113 @@
+# This task will download and start coturn
+---
+# Installs coturn, checks TLS cetrt once a day
+- name: Install coturn
+  ansible.builtin.apt:
+    name: coturn
+    state: present
+    cache_valid_time: 3600
+
+# Makes coturn directory for cert
+- name: Makes coturn directory
+  ansible.builtin.file:
+    path: /etc/coturn/certs
+    state: directory
+    owner: root
+    group: turnserver
+    mode: "0750"
+  when: coturn_tls
+
+# This will check for coturn TLS cert
+- name: Check coturn TLS certificate source
+  ansible.builtin.stat:
+    path: "{{ coturn_tls_cert_src }}"
+  register: coturn_tls_cert_source
+  when: coturn_tls
+
+# This will check for coturn TLS key
+- name: Check coturn TLS key source
+  ansible.builtin.stat:
+    path: "{{ coturn_tls_key_src }}"
+  register: coturn_tls_key_source
+  when: coturn_tls
+
+# Fails when it can't find cotrun files
+- name: Fail when coturn TLS files are missing
+  ansible.builtin.fail:
+    msg: "coturn TLS is enabled but certificate file is missing: {{ coturn_tls_cert_src }}"
+  when:
+    - coturn_tls
+    - not coturn_tls_cert_source.stat.exists
+
+# Fails when TLS key is missing
+- name: Fail when coturn TLS key is missing
+  ansible.builtin.fail:
+    msg: "coturn TLS is enabled but key file is missing: {{ coturn_tls_key_src }}"
+  when:
+    - coturn_tls
+    - not coturn_tls_key_source.stat.exists
+
+# This will make it so that coturn can see when Let's encrypt certs are renewed so it can copy it and renew itself
+- name: Install coturn certificate refresh hook
+  ansible.builtin.template:
+    src: coturn-cert-refresh.sh.j2
+    dest: /usr/local/sbin/coturn-cert-refresh
+    owner: root
+    group: root
+    mode: "0750"
+  when: coturn_tls
+
+# This will copy and move the cert so it is in the right place and has the right permissions so coturn can read it
+- name: Copy coturn certificate chain
+  ansible.builtin.copy:
+    src: "{{ coturn_tls_cert_src }}" # path of where it lies
+    dest: "{{ coturn_tls_cert }}" # path of where it should be
+    remote_src: true # alows for copying and moving files that are already on the server
+    owner: root
+    group: turnserver # so the server can read the cert
+    mode: "0640"
+  when: coturn_tls
+  notify: Restart coturn
+
+# This will copy and move the private key so it is in the right place and has the right permissions so coturn can read it
+- name: Copy coturn private key
+  ansible.builtin.copy:
+    src: "{{ coturn_tls_key_src }}"
+    dest: "{{ coturn_tls_key }}"
+    remote_src: true
+    owner: root
+    group: turnserver # so the server can read the cert
+    mode: "0640"
+  when: coturn_tls
+  notify: Restart coturn
+
+# This will remove the cert refresh hook if TLS is disabled, so it doesn't try to copy certs and restart coturn when there is no TLS
+- name: Remove coturn certificate refresh hook when TLS is disabled
+  ansible.builtin.file:
+    path: /usr/local/sbin/coturn-cert-refresh # This is were the cert refresh hook is located
+    state: absent
+  when: not coturn_tls
+
+# This creates the TLS file coturn needs for secure connections.
+# It may take a while the first time, but it will not run again if the file already exists.
+- name: Create parameters for Diffie Hellman (could take a while)
+  ansible.builtin.command: "openssl dhparam -out /etc/coturn-dh-{{ coturn_dhparam_length }}.pem {{ coturn_dhparam_length }}"
+  args:
+    creates: /etc/coturn-dh-{{ coturn_dhparam_length }}.pem
+  when: coturn_tls
+  notify: Restart coturn
+
+# copies the configs made to coturn template to the right place
+- name: Copy coturn config
+  ansible.builtin.template:
+    dest: /etc/turnserver.conf
+    src: turnserver.conf.j2
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart coturn
+
+# Enable coturn at boot and start it
+- name: Enable and start coturn
+  ansible.builtin.import_tasks: systemd.yml
+  when: ansible_service_mgr == "systemd"

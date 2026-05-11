@@ -1,0 +1,6 @@
+---
+- name: Enable coturn at boot
+  ansible.builtin.systemd:
+    name: coturn
+    enabled: true
+    state: started

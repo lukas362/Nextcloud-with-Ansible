@@ -1,0 +1,7 @@
+# Handler for Redis
+# This handler will restart the Redis service when called by the installation task of Redis
+---
+- name: Restart Redis
+  ansible.builtin.service:
+    name: redis-server
+    state: restarted

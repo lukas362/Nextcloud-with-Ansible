@@ -1,0 +1,17 @@
+# Installs Redis and is used for caching in Nextcloud
+---
+# This installs Redis on the server
+- name: Install Redis server
+  ansible.builtin.apt:
+    name: redis-server
+    state: present
+#    update_cache: true
+  when: ansible_os_family == "Debian"
+  notify: Restart Redis
+
+# Makes sure that Redis is started and working
+- name: Start and enable Redis
+  ansible.builtin.systemd:
+    name: redis-server
+    state: started
+    enabled: true

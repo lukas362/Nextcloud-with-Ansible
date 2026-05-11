@@ -1,0 +1,511 @@
+# Installation of Nextcloud. Downloads, unpacks and sets up Nextcloud on the server
+---
+# This will go to the offcial nextcloud webbsite and download and put it in /temp/nextcloud
+- name: Download Nextcloud
+  ansible.builtin.get_url:
+    url: "https://download.nextcloud.com/server/releases/nextcloud-{{ nextcloud_version }}.zip"
+    dest: "/tmp/nextcloud-{{ nextcloud_version }}.zip"
+    mode: "0644"
+
+# this will extract the zip version of Nextcloud
+- name: Extract Nextcloud
+  ansible.builtin.unarchive:
+    src: /tmp/nextcloud-{{ nextcloud_version }}.zip
+    dest: /var/www/
+    remote_src: true
+    owner: www-data
+    group: www-data
+
+# This will create a data directory for Nextcloud on the server and will store files, photos, docs, etc
+- name: Create data directory
+  ansible.builtin.file:
+    path: "{{ nextcloud_data_dir }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0750"
+
+# Set permissions for Nextcloud directory
+- name: Set permissions for Nextcloud
+  ansible.builtin.file:
+    path: "{{ nextcloud_install_dir }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    recurse: true
+
+# To ensure that Nextcloud can store files
+- name: Ensure www-data has a place for temporary Ansible files
+  ansible.builtin.file:
+    path: /var/www/.ansible/tmp
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0700"
+    recurse: true
+
+# This will install Nextcloud via the occ command (occ is nextclouds own cli), can't use special charachets or anything like that
+- name: Install Nextcloud via occ command
+  become_user: www-data
+  ansible.builtin.command:
+    cmd: >
+      php occ maintenance:install
+      --database "{{ nextcloud_db_type }}"
+      --database-name "{{ nextcloud_db_name }}"
+      --database-user "{{ nextcloud_db_user }}"
+      --database-pass "{{ nextcloud_db_password }}"
+      --admin-user "{{ nextcloud_admin_user }}"
+      --admin-pass "{{ nextcloud_admin_password }}"
+      --data-dir "{{ nextcloud_data_dir }}"
+    chdir: "{{ nextcloud_install_dir }}"
+    creates: "{{ nextcloud_install_dir }}/config/config.php"
+
+# Configure S3 as primary object storage in Nextcloud runtime config
+- name: Configure Nextcloud S3 objectstore class
+  become_user: www-data
+  ansible.builtin.command:
+    argv:
+      - php
+      - occ
+      - config:system:set
+      - objectstore
+      - class
+      - --value=\OC\Files\ObjectStore\S3
+    chdir: "{{ nextcloud_install_dir }}"
+  changed_when: false
+
+- name: Configure Nextcloud S3 objectstore non-sensitive arguments
+  become_user: www-data
+  ansible.builtin.command:
+    argv:
+      - php
+      - occ
+      - config:system:set
+      - objectstore
+      - arguments
+      - "{{ item.key }}"
+      - "--value={{ item.value }}"
+      - "--type={{ item.type | default('string') }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  loop:
+    - { key: bucket, value: "{{ nextcloud_s3_bucket }}" }
+    - { key: hostname, value: "{{ nextcloud_s3_hostname }}" }
+    - { key: use_ssl, value: "true", type: "boolean" }
+    - { key: use_path_style, value: "true", type: "boolean" }
+  changed_when: false
+
+- name: Configure Nextcloud S3 credentials
+  become_user: www-data
+  ansible.builtin.command:
+    argv:
+      - php
+      - occ
+      - config:system:set
+      - objectstore
+      - arguments
+      - "{{ item.key }}"
+      - "--value={{ item.value }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  loop:
+    - { key: key, value: "{{ nextcloud_s3_key }}" }
+    - { key: secret, value: "{{ nextcloud_s3_secret }}" }
+  changed_when: false
+  no_log: true
+
+- name: Verify Nextcloud S3 objectstore class is configured
+  become_user: www-data
+  ansible.builtin.command:
+    argv:
+      - php
+      - occ
+      - config:system:get
+      - objectstore
+      - class
+    chdir: "{{ nextcloud_install_dir }}"
+  register: nextcloud_objectstore_class_check
+  changed_when: false
+  failed_when: nextcloud_objectstore_class_check.rc != 0 or (nextcloud_objectstore_class_check.stdout | trim) != '\\OC\\Files\\ObjectStore\\S3'
+
+- name: Set Nextcloud to use Pretty URLs
+  become_user: www-data
+  ansible.builtin.command:
+    cmd: "php occ config:system:set overwrite.cli.url --value='https://{{ domains[0] }}'"
+    chdir: "{{ nextcloud_install_dir }}"
+  changed_when: false
+
+# This will set the RewriteBase for Nextcloud, which is needed for the pretty URLs to work
+- name: Set Nextcloud RewriteBase for clean URLs
+  become_user: www-data
+  ansible.builtin.command:
+    cmd: "php occ config:system:set htaccess.RewriteBase --value='/'"
+    chdir: "{{ nextcloud_install_dir }}"
+  changed_when: false
+
+# This will generate the .htaccess file for Nextcloud, which is needed for the pretty URLs to work
+- name: Set trusted domains for Nextcloud
+  become_user: www-data
+  ansible.builtin.command:
+    cmd: "php occ config:system:set trusted_domains {{ trusted_domain_index }} --value='{{ item }}'"
+    chdir: "{{ nextcloud_install_dir }}"
+  loop: "{{ nextcloud_trusted_domains | default(domains) }}"
+  loop_control:
+    index_var: trusted_domain_index
+  changed_when: false
+
+- name: Update hide index.php url
+  become_user: www-data
+  ansible.builtin.command:
+    cmd: "php occ maintenance:update:htaccess"
+    chdir: "{{ nextcloud_install_dir }}"
+  changed_when: false
+
+# Install the Nextcloud Office app (richdocuments) so users can edit documents
+# occ will skip the install if it is already installed, so it is safe to run every time
+- name: Install Nextcloud Office app
+  ansible.builtin.command:
+    cmd: php occ app:install richdocuments
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: richdocuments_install
+  failed_when: "'already installed' not in richdocuments_install.stdout"
+  changed_when: "'installed' in richdocuments_install.stdout"       # runs when told to install the app if not already installed
+
+# Make sure the app is active (otherwise I won't be able to use collabora)
+- name: Enable Nextcloud Office app
+  ansible.builtin.command:
+    cmd: php occ app:enable richdocuments
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: richdocuments_enable
+  changed_when: "'enabled' in richdocuments_enable.stdout"          # runs when told to enable the app if not already enabled
+
+# Verify that the app is enabled and working (otherwise I won't be able to use collabora)
+- name: Check that Nextcloud Office app is enabled
+  ansible.builtin.command:
+    cmd: php occ app:list --enabled
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: richdocuments_check
+  changed_when: false
+  failed_when: "'richdocuments' not in richdocuments_check.stdout"
+
+# Builtin mode uses Nextcloud's bundled CODE app instead of external Docker Collabora
+- name: Install built-in CODE app (richdocumentscode)
+  ansible.builtin.command:
+    cmd: php occ app:install richdocumentscode
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: richdocumentscode_install
+  failed_when: false
+  changed_when: "'installed' in richdocumentscode_install.stdout"
+  when: collabora_mode == "builtin"
+
+# Enables the builtin CODE app
+- name: Enable builtin CODE app (richdocumentscode)
+  ansible.builtin.command:
+    cmd: php occ app:enable richdocumentscode
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: richdocumentscode_enable
+  changed_when: "'enabled' in richdocumentscode_enable.stdout"
+  when: collabora_mode == "builtin"
+
+# Verifys that the builtin CODE app is working and enabled
+- name: Verify built-in CODE app is enabled
+  ansible.builtin.command:
+    cmd: php occ app:list --enabled
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: richdocumentscode_check
+  changed_when: false
+  failed_when: "'richdocumentscode' not in richdocumentscode_check.stdout"
+  when: collabora_mode == "builtin"
+
+# External mode collabora (leave commented while using builtin mode)
+# - name: Disable built-in CODE app in external mode
+#   ansible.builtin.command:
+#     cmd: php occ app:disable richdocumentscode
+#     chdir: "{{ nextcloud_install_dir }}"
+#   become_user: www-data
+#   register: richdocumentscode_disable
+#   changed_when: "'disabled' in richdocumentscode_disable.stdout"
+#   when: collabora_mode == "external"
+
+# Installs Nextcloud apps (put future apps here)
+- name: Installation of Nextcloud apps (calendar, mail, mfa, talk, etc)
+  ansible.builtin.command:
+    cmd: php occ app:install "{{ item }}"                           # loop trought items listed below
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data                                             # runs the command as www-data user, which is necessary for occ to work properly
+  loop:
+    - twofactor_totp
+    - calendar
+    - mail
+    - spreed                                                        # aka TALK app
+  register: apps_installed
+  failed_when: false                                                # ignores errors about the apps already being installed
+  changed_when: "'successfully installed' in apps_installed.stdout" # only shows as changed if the apps were actually installed, otherwise it will be skipped
+
+# Needed to avoid Errors with the mail app
+- name: Add missing database indices for mail feature
+  ansible.builtin.command:
+    cmd: php occ db:add-missing-indices                             # Command that adds all the missing database indices for the mail
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: db_indices
+  changed_when: "'added' in db_indices.stdout"                      # only shows as changed if indices were actually added, otherwise it will be skipped
+
+# Enables the apps that were installed before
+- name: Enable Nextcloud apps (calendar, mail, mfa, etc)
+  ansible.builtin.command:
+    cmd: php occ app:enable "{{ item }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  loop:
+    - twofactor_totp
+    - calendar
+    - mail
+    - spreed
+  register: apps_enabled
+  changed_when: "'enabled' in apps_enabled.stdout"                # only shows as changed if the apps were actually enabled, otherwise it will be skipped
+
+# Checks so that the apps are actually running and working
+- name: Check that Nextcloud apps are enabled
+  ansible.builtin.command:
+    cmd: php occ app:list --enabled
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: apps_checking
+  changed_when: false
+
+# This will add the coturn server as a Talk STUN server, which is needed for the Talk app to work properly
+- name: Add local coturn as Talk STUN server
+  ansible.builtin.command:
+    cmd: php occ talk:stun:add "{{ coturn_domain }}:{{ coturn_listening_port }}"
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: talk_stun_add
+  failed_when: false
+  changed_when: "'already' not in (talk_stun_add.stdout | lower)"
+
+# This will add the coturn server as a Talk TURN server for UDP and TCP, which is needed for the Talk app to work properly
+- name: Add Talk TURN server for UDP and TCP
+  ansible.builtin.command:
+    cmd: >
+      php occ talk:turn:add
+      --secret "{{ coturn_static_secret }}"
+      turn
+      "{{ coturn_domain }}:{{ coturn_listening_port }}"
+      udp,tcp
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: talk_turn_add
+  failed_when: false
+  changed_when: "'already' not in (talk_turn_add.stdout | lower)"
+
+# This will add the coturn server as a Talk TURNS server for TLS fallback, which is needed for the Talk app to work properly
+- name: Add Talk TURNS server for TLS fallback
+  ansible.builtin.command:
+    cmd: >
+      php occ talk:turn:add
+      --secret "{{ coturn_static_secret }}"
+      turns
+      "{{ coturn_domain }}:{{ coturn_tls_listening_port }}"
+      tcp
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  when: coturn_tls | default(false)
+  register: talk_turns_add
+  failed_when: false
+  changed_when: "'already' not in (talk_turns_add.stdout | lower)"
+
+# Needed for the mail app to work, otherwise I get errors about missing database tables for the mail app
+- name: Repair Nextcloud to initialize Mail app database
+  ansible.builtin.command:
+    cmd: php occ maintenance:repair
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  changed_when: false
+
+# This will set the mail account for the admin user, which is needed for the mail app to work properly, otherwise I get errors about missing mail
+- name: Check if Nextcloud mail account for admin already exists
+  ansible.builtin.command:
+    cmd: php occ mail:account:export {{ nextcloud_admin_user }}
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: mail_checking
+  changed_when: false # reads only the information to find out if there is account or not
+  failed_when: false
+
+# Workaround from Nextcloud thread: write provisioning directly to oc_mail_provisionings
+- name: Reset Mail provisioning rows
+  ansible.builtin.command:
+    cmd: >
+      mysql
+      -u{{ nextcloud_db_user }}
+      -p{{ nextcloud_db_password }}
+      -h {{ nextcloud_db_host }}
+      -D {{ nextcloud_db_name }}
+      -e "DELETE FROM oc_mail_provisionings WHERE provisioning_domain='{{ from_domain }}';"
+  register: mail_provisioning_resetw
+  changed_when: true
+  no_log: true
+
+  # This is for the provisioning configs of the mail app. This will aply to every user on the server, found in "groupware"
+- name: Insert Mail provisioning row
+  ansible.builtin.command:
+    cmd: >
+      mysql
+      -u{{ nextcloud_db_user }}
+      -p{{ nextcloud_db_password }}
+      -h {{ nextcloud_db_host }}
+      -D {{ nextcloud_db_name }}
+      -e "
+      INSERT INTO oc_mail_provisionings(
+        id,
+        provisioning_domain,
+        email_template,
+        imap_user,
+        imap_host,
+        imap_port,
+        imap_ssl_mode,
+        smtp_user,
+        smtp_host,
+        smtp_port,
+        smtp_ssl_mode,
+        ldap_aliases_provisioning,
+        ldap_aliases_attribute
+      ) VALUES (
+        1,
+        '{{ from_domain }}',
+        '%EMAIL%',
+        '%EMAIL%',
+        '{{ imap_host }}',
+        '{{ imap_port }}',
+        '{{ imap_ssl_mode }}',
+        '%EMAIL%',
+        '{{ smtp_host }}',
+        '{{ smtp_port }}',
+        '{{ smtp_ssl_mode }}',
+        '0',
+        ''
+      );"
+  register: mail_provisioning_insert
+  changed_when: true
+
+# This sets system-level SMTP used by notifications (including share-by-mail)
+# - name: Configure Nextcloud SMTP mail server
+#  ansible.builtin.command:
+#    cmd: >
+#      php {{ nextcloud_install_dir }}/occ config:system:set {{ item.key }}
+#      --value="{{ item.value }}"
+#      --type={{ item.type | default("string") }}
+#    chdir: "{{ nextcloud_install_dir }}"
+#  become_user: www-data
+#  loop:
+#    - { key: mail_smtpmode, value: smtp }                                            # Set the mail mode to SMTP
+#    - { key: mail_sendmailmode, value: smtp }                                        # Keep sendmail mode aligned with SMTP mode
+#    - { key: mail_from_address, value: "{{ from_address }}" }                       # Local part of the email address (before the @ symbol)
+#    - { key: mail_domain, value: "{{ from_domain }}" }                         # Domain part of the email address (after the @ symbol)
+#    - { key: mail_smtpauthtype, value: LOGIN }                                       # Authentication type for the SMTP server
+#    - { key: mail_smtpauth, value: "true", type: boolean }                         # Enable SMTP authentication
+#    - { key: mail_smtphost, value: "{{ smtp_host }}" }                              # Runs through SMTP server
+#    - { key: mail_smtpport, value: "{{ smtp_port }}", type: integer }               # Common: 587 (STARTTLS) or 465 (SMTPS)
+#    - { key: mail_smtpsecure, value: "{{ smtp_ssl_mode }}" }                        # tls for 587, ssl for 465
+#    - { key: mail_smtpname, value: "{{ smtp_username_basic_settings }}" }           # Username for SMTP authentication
+#    - { key: mail_smtppassword, value: "{{ smtp_password_basic_settings }}" }       # Password for SMTP authentication
+#    - { key: mail_smtptimeout, value: "30", type: integer }                         # SMTP timeout in seconds
+#    - { key: mail_smtpdebug, value: "false", type: boolean }                        # Keep debug off unless troubleshooting
+#  changed_when: false
+#  no_log: true
+
+# This is were the mfa will be enforced for all users on the server
+- name: Enforece mfa for all users
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ config:system:set twofactor_enforced --value=true    # This will enforce mfa for all users on the server
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: mfa_enforced
+  changed_when: false
+
+# This is if you wanna exclude a specific group from mfa
+# - name: Exclude specific group (e.g., admins) from enforcement
+#    command: "php {{ nextcloud_install_dir }}/occ config:system:set twofactor_enforced_excluded_groups --value='[\"admin\"]'"
+
+# Set Nextcloud to use cron for background jobs (required for proper operation)
+- name: Set Nextcloud to use cron for background jobs
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ config:app:set core backgroundjobs_mode --value=cron
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  register: cron_mode_set
+  changed_when: "'cron' in cron_mode_set.stdout"
+
+# Create the cron job to execute Nextcloud cron.php every 5 minutes (required for background jobs)
+- name: Set up Nextcloud cron job
+  ansible.builtin.cron:
+    name: "Nextcloud cron"
+    minute: "*/5"
+    hour: "*"
+    day: "*"
+    month: "*"
+    weekday: "*"
+    user: "www-data"
+    job: "php -f {{ nextcloud_install_dir }}/cron.php"
+    cron_file: "nextcloud"
+    state: present
+
+# Mimetype migrations fix, updates the database mapping of file extensions to file types
+
+- name: Update mimetype database
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ maintenance:mimetype:update-db
+  become_user: www-data
+  register: mimetype_db_result
+  changed_when: "'Added' in mimetype_db_result.stdout or 'Updated' in mimetype_db_result.stdout"
+
+- name: Update mimetypelist.js
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ maintenance:mimetype:update-js
+  become_user: www-data
+  register: mimetype_js_result
+  changed_when: "'updated' in mimetype_js_result.stdout.lower()"
+
+- name: Run maintenance repair
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ maintenance:repair --include-expensive
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  changed_when: false
+  timeout: 600  # allow up to 10 minutes
+
+# This should fix Memcache configuration issues that can cause performance problems and errors in Nextcloud
+- name: Configure local memcache with APCu
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ config:system:set memcache.local --value='\OC\Memcache\APCu'
+  become_user: www-data
+  changed_when: false
+
+- name: Configure distributed memcache with Redis
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ config:system:set memcache.distributed --value='\OC\Memcache\Redis'
+  become_user: www-data
+  changed_when: false
+
+- name: Configure locking memcache with Redis
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ config:system:set memcache.locking --value='\OC\Memcache\Redis'
+  become_user: www-data
+  changed_when: false
+
+- name: Configure Redis host
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ config:system:set redis host --value='localhost'
+  become_user: www-data
+  changed_when: false
+
+- name: Configure Redis port
+  ansible.builtin.command:
+    cmd: php {{ nextcloud_install_dir }}/occ config:system:set redis port --type=integer --value=6379
+  become_user: www-data
+  changed_when: false

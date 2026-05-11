@@ -1,0 +1,8 @@
+# Verifies that the SMTP settings are correct by sending a test email
+# handlers/main.yml
+- name: Send SMTP test email
+  ansible.builtin.command:
+    cmd: php occ mail:account:diagnose {{ nextcloud_admin_user }}
+    chdir: "{{ nextcloud_install_dir }}"
+  become_user: www-data
+  changed_when: false

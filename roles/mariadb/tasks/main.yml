@@ -1,0 +1,65 @@
+# This is where Mariadb will be installed and other necessary packages
+# Things such as root pwd, mariadb verification and creating Nextcloud database + users will be found here
+---
+# Installs mariadb server, client, backup and python library for anisble
+- name: Install Mariadb and some necessary packages
+  ansible.builtin.apt:
+    name:
+      - mariadb-server    # Where the actual server resides/lives
+      - mariadb-client    # Cli tols for mariadb + mysql
+      - mariadb-backup    # Backup of a server
+      - python3-pymysql   # Python library that allows for Python programs to directly communicate with mariadb
+    state: present
+#    update_cache: true
+
+# Checks so mariadb started and is working
+- name: Checks so that MariDB is started and working
+  ansible.builtin.systemd:
+    name: mariadb
+    state: started
+    enabled: true
+
+# This removes andy anonymous users
+- name: Remove anonymous users
+  community.mysql.mysql_user:
+    name: ""              # "" Needed to target anonymous users
+    host_all: true
+    login_unix_socket: "{{ mariadb_socket }}"
+    state: absent
+    column_case_sensitive: false
+
+# This will removes the default test database that comes with MariaDB
+- name: Remove test database
+  community.mysql.mysql_db:
+    name: test          # Needs to be "test" to remove it
+    login_unix_socket: "{{ mariadb_socket }}"
+    state: absent
+
+# This will make attempt to connect to the server
+- name: MariaDB accept connection
+  ansible.builtin.wait_for:
+    port: "{{ mariadb_port }}"
+    host: 127.0.0.1
+    delay: 3              # After 3 seconds it will try to connect again
+    timeout: 30           # It will keep on trying to connect for up to 30 seconds
+
+# This will create the database for Nextcloud with the correct encoding and collation
+- name: Create Nextcloud database
+  community.mysql.mysql_db:
+    name: "{{ nextcloud_db_name }}"
+    encoding: utf8mb4                   # This gives support to any unicode character and emojies
+    collation: utf8mb4_general_ci       # Support all languages, special characters and emojis
+    login_unix_socket: "{{ mariadb_socket }}"
+    state: present
+
+# This will create Nextcloud DB users and grants full access to the Nextcloud database
+- name: Create Nextcloud database user
+  community.mysql.mysql_user:
+    name: "{{ nextcloud_db_user }}"
+    password: "{{ nextcloud_db_password }}"
+    priv: "{{ nextcloud_db_name }}.*:ALL" # This will give all permissions to the user on the Nextcloud database that are connected via localhost
+    host: "{{ nextcloud_db_user_host }}"
+    login_user: root
+    login_unix_socket: "{{ mariadb_socket }}"
+    state: present
+    column_case_sensitive: false

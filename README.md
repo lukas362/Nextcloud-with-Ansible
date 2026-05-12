@@ -110,4 +110,3 @@ ansible-playbook -i inventory.ini users.yml
 ---
 
 **Created by**: [@lukas362](https://github.com/lukas362)  
-**Last Updated**: May 7, 2026

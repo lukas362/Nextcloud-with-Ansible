@@ -15,7 +15,7 @@ Automated deployment of Nextcloud on bare metal Ubuntu servers using Ansible. Th
 - **Web Server**: Apache2
 - **Database**: MariaDB
 - **Cache**: Redis
-- **Language**: PHP
+- **PHP**
 - **SSL/TLS**: Certbot
 - **Voice/Video**: Coturn (for Nextcloud Talk)
 - **Document Editing**: Collabora Online (optional)
